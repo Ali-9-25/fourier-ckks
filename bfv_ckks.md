@@ -1,5 +1,8 @@
 ## CKKS and BFV:
 
+**Useful Links**
+- [CKKS Informal Introduction](https://blog.openmined.org/ckks-explained-part-1-simple-encoding-and-decoding/) 
+
 ### Data Representation:
 **BFV scheme**
 - Plaintext space: integers modulo a plaintext modulous q
