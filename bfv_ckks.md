@@ -1,7 +1,8 @@
 ## CKKS and BFV:
 
 **Useful Links**
-- [CKKS Informal Introduction](https://blog.openmined.org/ckks-explained-part-1-simple-encoding-and-decoding/) 
+- [CKKS Informal Introduction - OpenMined BlogPost](https://blog.openmined.org/ckks-explained-part-1-simple-encoding-and-decoding/)
+- [CKKS Original Paper - Homomorphic Encryption for Arithmetic of Approximate Numbers](https://eprint.iacr.org/2016/421.pdf)
 
 ### Data Representation:
 **BFV scheme**
