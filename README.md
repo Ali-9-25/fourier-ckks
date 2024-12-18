@@ -13,7 +13,7 @@ Advances in Cryptology - ASIACRYPT 2017.
 
 - [x] Implementation of the CKKS scheme for approximate arithmetic.
 - [x] Support for encoding, decoding, encryption, and decryption.
-- [ ] Support evaluation (e.g., addition, multiplication).
+- [x] Support evaluation (e.g., addition, multiplication).
 - [ ] Integration with machine learning applications.
 
 
