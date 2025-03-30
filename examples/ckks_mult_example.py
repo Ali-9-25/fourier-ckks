@@ -11,11 +11,14 @@ from ckks.ckks_parameters import CKKSParameters
 def main():
 
     poly_degree = 4
+    # ciph_modulus = 1 << 600
+    # q0 = 2**24
+    # big_modulus = 1 << 1200
+    # scaling_factor = 2**7-1
+    # ciph_modulus = scaling_factor**2 * q0  # ql
     ciph_modulus = 1 << 600
-    q0 = 2**24
     big_modulus = 1 << 1200
-    scaling_factor = 2**7-1
-    ciph_modulus = scaling_factor**2 * q0  # ql
+    scaling_factor = 1 << 30
     params = CKKSParameters(poly_degree=poly_degree,
                             ciph_modulus=ciph_modulus,
                             big_modulus=big_modulus,
