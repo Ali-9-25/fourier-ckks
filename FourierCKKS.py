@@ -38,17 +38,16 @@ class FourierCKKS:
 
         # Data lengths
         self.data_len = poly_degree // 2
-        self.max_message_length = self.data_len // 2
 
-    def forward(self, message: np.ndarray) -> object:
+    def forward(self, message: np.ndarray, message_out_length: int) -> object:
         """
         Perform FFT, encode, and encrypt on a complex-valued message.
 
         :param message: 1D complex numpy array of length <= max_message_length
         :return: Encrypted ciphertext
         """
-        if message.shape[0] > self.max_message_length:
-            raise ValueError(f"Message length must be <= {self.max_message_length}")
+        if message_out_length > self.data_len:
+            raise ValueError(f"Output Message length must be <= {self.data_len}")
 
         # Embed into vector of length data_len
         vec = np.zeros(self.data_len, dtype=complex)
@@ -61,7 +60,7 @@ class FourierCKKS:
         ct = self.encryptor.encrypt(pt)
         return ct
 
-    def backward(self, ciphertext: object) -> np.ndarray:
+    def backward(self, ciphertext: object, message_out_length: int) -> np.ndarray:
         """
         Decrypt, decode, and perform inverse FFT to recover the plaintext array.
 
@@ -71,7 +70,7 @@ class FourierCKKS:
         pt = self.decryptor.decrypt(ciphertext)
         freq = self.encoder.decode(pt)
         vec = IFFT1D(freq)
-        return vec
+        return vec[:message_out_length]
 
     def cipher_add(self, ct1: object, ct2: object) -> object:
         """
