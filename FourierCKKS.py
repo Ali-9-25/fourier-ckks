@@ -5,7 +5,7 @@ from ckks.ckks_encryptor import CKKSEncryptor
 from ckks.ckks_decryptor import CKKSDecryptor
 from ckks.ckks_evaluator import CKKSEvaluator
 from ckks.ckks_encoder import CKKSEncoder
-from fft.fft import FFT1D, IFFT1D, FFT2D, IFFT2D
+from fft.fft import *
 
 
 class FourierCKKS:
