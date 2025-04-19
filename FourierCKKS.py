@@ -10,7 +10,7 @@ from fft.fft import FFT1D, IFFT1D, FFT2D, IFFT2D
 
 class FourierCKKS:
     """
-    A helper class to perform FFT-based homomorphic encryption using the CKKS scheme,
+    A class to perform FFT-based homomorphic encryption using the CKKS scheme,
     supporting both 1D and 2D data via segmented FFT packing.
     """
 
@@ -19,7 +19,7 @@ class FourierCKKS:
                  ciph_modulus=(1 << 200),
                  big_modulus=(1 << 300),
                  scaling_factor=(1 << 15)):
-        # Initialize CKKS parameters and keys
+        # We begin by initializing the CKKS parameters and keys
         self.params = CKKSParameters(
             poly_degree=poly_degree,
             ciph_modulus=ciph_modulus,
@@ -31,22 +31,22 @@ class FourierCKKS:
         self.secret_key = keygen.secret_key
         self.relin_key = keygen.relin_key
 
-        # Encoder, Encryptor, Decryptor, Evaluator
+        # We then proceed to instantiate the Encoder, Encryptor, Decryptor, Evaluator
         self.encoder = CKKSEncoder(self.params)
         self.encryptor = CKKSEncryptor(self.params, self.public_key, self.secret_key)
         self.decryptor = CKKSDecryptor(self.params, self.secret_key)
         self.evaluator = CKKSEvaluator(self.params)
 
-        # Maximum number of complex slots per ciphertext
+        # We define the maximum number of complex slots per ciphertext
         self.data_len = poly_degree // 2
-        # For 2D support, ensure data_len is a perfect square
+        # For 2D support, we ensure that data_len is a perfect square (so that when we segment the FFT, we partition the problem
+        # into squares)
         self.img_side = int(np.sqrt(self.data_len))
         if self.img_side * self.img_side != self.data_len:
             raise ValueError(f"data_len={self.data_len} is not a perfect square; cannot support 2D FFT packing.")
 
     def forward(self,
                 message: np.ndarray,
-                target_length: int = None,
                 target_height: int = None,
                 target_width: int = None) -> list:
         """
@@ -57,59 +57,31 @@ class FourierCKKS:
 
         Returns a list of ciphertext segments.
         """
-        # 1D case
-        if message.ndim == 1:
-            L = message.shape[0]
-            T = target_length if target_length is not None else L
-            if T < L:
-                raise ValueError(f"target_length ({T}) must be >= message length ({L})")
-
-            segs = int(np.ceil(T / self.data_len))
-            padded_len = segs * self.data_len
-
-            # pad
-            vec = np.zeros(padded_len, dtype=complex)
-            vec[:L] = message
-            freq_full = FFT1D(vec)
-
-            ct_list = []
-            for i in range(segs):
-                chunk = freq_full[i*self.data_len:(i+1)*self.data_len]
-                pt = self.encoder.encode(chunk, self.params.scaling_factor)
-                ct_list.append(self.encryptor.encrypt(pt))
-            return ct_list
-
-        # 2D case
-        elif message.ndim == 2:
-            H, W = message.shape
-            Ht = target_height if target_height is not None else H
-            Wt = target_width if target_width is not None else W
-            if Ht < H or Wt < W:
-                raise ValueError(f"target dimensions ({Ht}, {Wt}) must be >= message dimensions ({H}, {W})")
-
-            # segmentation counts
-            nv = int(np.ceil(Ht / self.img_side))
-            nh = int(np.ceil(Wt / self.img_side))
+        H, W = message.shape
+        if target_width == 1:
+            nv = int(np.ceil(target_height / self.data_len))
+            ph = nv * self.data_len 
+            nh = 1
+            pw = 1
+        else: 
+            nv = int(np.ceil(target_height / self.img_side))
             ph = nv * self.img_side
+            nh = int(np.ceil(target_width / self.img_side))
             pw = nh * self.img_side
-
-            # pad
-            mat = np.zeros((ph, pw), dtype=complex)
-            mat[:H, :W] = message
-
-            # 2D FFT
-            freq2d = FFT2D(mat)
-            freq_flat = freq2d.flatten()
-
-            ct_list = []
-            for i in range(nv * nh):
-                chunk = freq_flat[i*self.data_len:(i+1)*self.data_len]
-                pt = self.encoder.encode(chunk, self.params.scaling_factor)
-                ct_list.append(self.encryptor.encrypt(pt))
-            return ct_list
-
+        mat = np.zeros((ph, pw), dtype=complex)
+        mat[:H, :W] = message
+        if target_width == 1:
+            freq = FFT1D(mat.flatten())
         else:
-            raise ValueError("Input must be a 1D or 2D numpy array.")
+            freq2d = FFT2D(mat)
+            freq = freq2d.flatten()
+        ct_list = []
+        for i in range(nv * nh):
+            chunk = freq[i*self.data_len:(i+1)*self.data_len]
+            pt = self.encoder.encode(chunk, self.params.scaling_factor)
+            ct_list.append(self.encryptor.encrypt(pt))
+        return ct_list
+        
 
     def backward(self,
                  ct_list: list,
