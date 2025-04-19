@@ -85,44 +85,31 @@ class FourierCKKS:
 
     def backward(self,
                  ct_list: list,
-                 target_length: int = None,
                  target_height: int = None,
                  target_width: int = None) -> np.ndarray:
         """
         Decrypt, decode, and inverse-FFT a list of ciphertexts,
         returning the real 1D array or 2D image truncated to target dimensions.
         """
-        # 1D case
-        if target_height is None and target_width is None:
-            segs = len(ct_list)
-            padded_len = segs * self.data_len
+        segs = len(ct_list)
+        padded_len = segs * self.data_len
 
-            freq = np.zeros(padded_len, dtype=complex)
-            for i, ct in enumerate(ct_list):
-                pt = self.decryptor.decrypt(ct)
-                freq[i*self.data_len:(i+1)*self.data_len] = self.encoder.decode(pt)
-
+        freq = np.zeros(padded_len, dtype=complex)
+        for i, ct in enumerate(ct_list):
+            pt = self.decryptor.decrypt(ct)
+            freq[i*self.data_len:(i+1)*self.data_len] = self.encoder.decode(pt)
+        if target_width == 1:
             time = IFFT1D(freq)
-            L = target_length if target_length is not None else padded_len
-            return time[:L]
-
-        # 2D case
-        else:
-            segs = len(ct_list)
-            padded_len = segs * self.data_len
-
-            freq = np.zeros(padded_len, dtype=complex)
-            for i, ct in enumerate(ct_list):
-                pt = self.decryptor.decrypt(ct)
-                freq[i*self.data_len:(i+1)*self.data_len] = self.encoder.decode(pt)
-
+            return time[:target_height]
+        else: 
             nv = int(np.ceil(target_height / self.img_side))
-            nh = int(np.ceil(target_width / self.img_side))
             ph = nv * self.img_side
+            nh = int(np.ceil(target_width / self.img_side))
             pw = nh * self.img_side
-            freq2d = freq.reshape((ph, pw))
-            time2d = IFFT2D(freq2d)
-            return time2d[:target_height, :target_width]
+            freq = freq.reshape((ph, pw))
+            time = IFFT2D(freq)
+            return time[:target_height, :target_width]
+
 
     def cipher_add(self, ct_list1: list, ct_list2: list) -> list:
         """
