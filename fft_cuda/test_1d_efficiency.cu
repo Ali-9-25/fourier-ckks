@@ -14,7 +14,7 @@ int main()
         << std::setw(15) << "FFT_CPU(ms)"
         << std::setw(15) << "FFT_GPU(ms)" << '\n';
 
-    for (int exp = 3; exp <= 27; ++exp) 
+    for (int exp = 3; exp <= 20; ++exp) 
     {
         std::size_t N = 1ULL << exp;
 
