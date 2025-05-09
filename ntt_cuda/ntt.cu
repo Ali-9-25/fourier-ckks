@@ -354,55 +354,114 @@ negacyclic polynomial multiplication via two diagonal twists + NTT
 C(x) = A(x)·B(x)  mod  (x^N + 1)
 * ================================================================== */
 int poly_mul_gpu(const uint32_t* A_host,
-    const uint32_t* B_host,
-    uint32_t*       C_host,            // length N
-    std::size_t     N,
-    uint32_t        w_primitive_root,  // generator g
-    uint32_t        w_primitive_root_inv,
-    uint32_t        p)
+                       const uint32_t* B_host,
+                       uint32_t*       C_host,
+                       std::size_t     N,
+                       uint32_t        w_primitive_root,
+                       uint32_t        w_primitive_root_inv,
+                       uint32_t        p)
 {
-    // 0) build psi tables
-    std::vector<uint32_t> psi, psi_inv;
-    precompute_psi_tables(N, w_primitive_root, p, psi, psi_inv);
+    std::cout << "[DEBUG poly_mul_gpu] N=" << N << " p=" << p << " root=" << w_primitive_root
+              << " root_inv=" << w_primitive_root_inv << "\n";
 
-    // 1) pre-twist: A[i] *= ψ^i, B[i] *= ψ^i
+    // 0) build psi tables
+    std::vector<uint32_t> psi(N), psi_inv(N);
+    {
+        uint32_t exp = static_cast<uint32_t>((p - 1) / (2 * N));
+        uint32_t psi_base     = mod_pow(w_primitive_root, exp, p);
+        uint32_t psi_base_inv = mod_pow(psi_base, p - 2, p);
+        psi[0] = psi_inv[0] = 1;
+        for (std::size_t i = 1; i < N; ++i) {
+            psi[i]     = mod_mul(psi[i - 1], psi_base,     p);
+            psi_inv[i] = mod_mul(psi_inv[i - 1], psi_base_inv, p);
+        }
+    }
+    std::cout << "[DEBUG] psi: ";
+    for (auto x : psi) std::cout << x << ' ';
+    std::cout << "\n[DEBUG] psi_inv: ";
+    for (auto x : psi_inv) std::cout << x << ' ';
+    std::cout << "\n";
+
+    // 1) pre-twist
     std::vector<uint32_t> A_scaled(N), B_scaled(N);
     for (std::size_t i = 0; i < N; ++i) {
         A_scaled[i] = mod_mul(A_host[i], psi[i], p);
         B_scaled[i] = mod_mul(B_host[i], psi[i], p);
     }
+    std::cout << "[DEBUG] A_scaled: ";
+    for (auto x : A_scaled) std::cout << x << ' ';
+    std::cout << "\n[DEBUG] B_scaled: ";
+    for (auto x : B_scaled) std::cout << x << ' ';
+    std::cout << "\n";
 
     // 2) forward NTT on both in parallel
     std::vector<uint32_t> A_ntt(N), B_ntt(N);
-    if ( ntt_double_gpu(A_scaled.data(), B_scaled.data(), A_ntt.data(), B_ntt.data(), N, w_primitive_root, p))
+    if (ntt_double_gpu(A_scaled.data(), B_scaled.data(), A_ntt.data(), B_ntt.data(), N, w_primitive_root, p)) {
+        std::cerr << "[ERROR] forward NTT failed\n";
         return -1;
+    }
+    std::cout << "[DEBUG] A_ntt: ";
+    for (auto x : A_ntt) std::cout << x << ' ';
+    std::cout << "\n[DEBUG] B_ntt: ";
+    for (auto x : B_ntt) std::cout << x << ' ';
+    std::cout << "\n";
 
-    // 3) pointwise product on GPU
+    // 3) pointwise product
     const size_t bytes = N * sizeof(uint32_t);
-    uint32_t *d_A{}, *d_B{}, *d_C{};
+    uint32_t *d_A, *d_B, *d_C;
     cudaMalloc(&d_A, bytes);
     cudaMalloc(&d_B, bytes);
     cudaMalloc(&d_C, bytes);
-
     cudaMemcpy(d_A, A_ntt.data(), bytes, cudaMemcpyHostToDevice);
     cudaMemcpy(d_B, B_ntt.data(), bytes, cudaMemcpyHostToDevice);
 
+    {
+        std::vector<uint32_t> tempA = A_ntt, tempB = B_ntt;
+        std::cout << "[DEBUG] pointwise inputs: ";
+        for (std::size_t i = 0; i < N; ++i)
+            std::cout << tempA[i] << "*" << tempB[i] << ' ';
+        std::cout << "\n";
+    }
+
     dim3 thr(256), blk((N + 255) / 256);
     pointwise_mul_kernel_int<<<blk, thr>>>(d_A, d_B, d_C, N, p);
+    cudaDeviceSynchronize();
+
+    std::vector<uint32_t> C_pw(N);
+    cudaMemcpy(C_pw.data(), d_C, bytes, cudaMemcpyDeviceToHost);
+    std::cout << "[DEBUG] C_pointwise: ";
+    for (auto x : C_pw) std::cout << x << ' ';
+    std::cout << "\n";
+
+    cudaFree(d_A);
+    cudaFree(d_B);
 
     // 4) inverse NTT (cyclic)
+    uint32_t N_inv = mod_pow(static_cast<uint32_t>(N), p - 2, p);
     std::vector<uint32_t> C_time(N);
     cudaMemcpy(C_time.data(), d_C, bytes, cudaMemcpyDeviceToHost);
-    cudaFree(d_A);  cudaFree(d_B);  cudaFree(d_C);
+    cudaFree(d_C);
 
-    uint32_t N_inv = mod_pow(static_cast<uint32_t>(N), p - 2, p);
-    if ( intt_gpu(C_time.data(), C_host, N, N_inv, w_primitive_root_inv, p))
+    std::cout << "[DEBUG] before inverse NTT: ";
+    for (auto x : C_time) std::cout << x << ' ';
+    std::cout << "\n";
+
+    if (intt_gpu(C_time.data(), C_host, N, N_inv, w_primitive_root_inv, p)) {
+        std::cerr << "[ERROR] inverse NTT failed\n";
         return -1;
+    }
+    std::cout << "[DEBUG] after inverse NTT: ";
+    for (std::size_t i = 0; i < N; ++i) std::cout << C_host[i] << ' ';
+    std::cout << "\n";
 
-    // 5) post-twist: C[i] *= ψ^{-i}
+    // 5) post-twist
     for (std::size_t i = 0; i < N; ++i) {
         C_host[i] = mod_mul(C_host[i], psi_inv[i], p);
     }
+    std::cout << "[DEBUG] final C: ";
+    for (std::size_t i = 0; i < N; ++i) std::cout << C_host[i] << ' ';
+    std::cout << "\n";
 
     return 0;
 }
+
