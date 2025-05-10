@@ -6,6 +6,7 @@ from math import log, pi, cos, sin
 import util.number_theory as nbtheory
 from util.bit_operations import bit_reverse_vec, reverse_bits
 
+
 class NTTContext:
     """An instance of Number/Fermat Theoretic Transform parameters.
 
@@ -39,15 +40,19 @@ class NTTContext:
                 use.
         """
         assert (poly_degree & (poly_degree - 1)) == 0, \
-            "Polynomial degree must be a power of 2. d = " + str(poly_degree) + " is not."
+            "Polynomial degree must be a power of 2. d = " + \
+            str(poly_degree) + " is not."
         self.coeff_modulus = coeff_modulus
         self.degree = poly_degree
         if not root_of_unity:
             # We use the (2d)-th root of unity, since d of these are roots of x^d + 1, which can be
             # used to uniquely identify any polynomial mod x^d + 1 from the CRT representation of
             # x^d + 1.
-            root_of_unity = nbtheory.root_of_unity(order=2 * poly_degree, modulus=coeff_modulus)
-
+            root_of_unity, generator = nbtheory.root_of_unity(
+                order=2 * poly_degree, modulus=coeff_modulus)
+            inv_generator = nbtheory.mod_inv(generator, coeff_modulus)
+            self.generator = generator
+            self.inv_generator = inv_generator
         self.precompute_ntt(root_of_unity)
 
     def precompute_ntt(self, root_of_unity):
@@ -64,14 +69,16 @@ class NTTContext:
         self.roots_of_unity = [1] * self.degree
         for i in range(1, self.degree):
             self.roots_of_unity[i] = \
-                (self.roots_of_unity[i - 1] * root_of_unity) % self.coeff_modulus
+                (self.roots_of_unity[i - 1] *
+                 root_of_unity) % self.coeff_modulus
 
         # Find powers of inverse root of unity.
         root_of_unity_inv = nbtheory.mod_inv(root_of_unity, self.coeff_modulus)
         self.roots_of_unity_inv = [1] * self.degree
         for i in range(1, self.degree):
             self.roots_of_unity_inv[i] = \
-                (self.roots_of_unity_inv[i - 1] * root_of_unity_inv) % self.coeff_modulus
+                (self.roots_of_unity_inv[i - 1] *
+                 root_of_unity_inv) % self.coeff_modulus
 
         # Compute precomputed array of reversed bits for iterated NTT.
         self.reversed_bits = [0] * self.degree
@@ -109,10 +116,13 @@ class NTTContext:
                     index_odd = j + i + (1 << (logm - 1))
 
                     rou_idx = (i << (1 + log_num_coeffs - logm))
-                    omega_factor = (rou[rou_idx] * result[index_odd]) % self.coeff_modulus
+                    omega_factor = (
+                        rou[rou_idx] * result[index_odd]) % self.coeff_modulus
 
-                    butterfly_plus = (result[index_even] + omega_factor) % self.coeff_modulus
-                    butterfly_minus = (result[index_even] - omega_factor) % self.coeff_modulus
+                    butterfly_plus = (
+                        result[index_even] + omega_factor) % self.coeff_modulus
+                    butterfly_minus = (
+                        result[index_even] - omega_factor) % self.coeff_modulus
 
                     result[index_even] = butterfly_plus
                     result[index_odd] = butterfly_minus
@@ -159,7 +169,7 @@ class NTTContext:
         poly_degree_inv = nbtheory.mod_inv(self.degree, self.coeff_modulus)
 
         # We scale down the FTT output given in the FTT paper.
-        result = [(int(to_scale_down[i]) * self.roots_of_unity_inv[i] * poly_degree_inv) \
+        result = [(int(to_scale_down[i]) * self.roots_of_unity_inv[i] * poly_degree_inv)
                   % self.coeff_modulus for i in range(num_coeffs)]
 
         return result
@@ -180,6 +190,7 @@ class FFTContext:
         reversed_bits (list): The ith member of the list is the bits of i
             reversed, used in the iterative implementation of FFT.
     """
+
     def __init__(self, fft_length):
         """Inits FFTContext with a length for the FFT vector.
 
@@ -231,7 +242,8 @@ class FFTContext:
         """
         num_coeffs = len(coeffs)
         assert len(rou) >= num_coeffs, \
-            "Length of the roots of unity is too small. Length is " + str(len(rou))
+            "Length of the roots of unity is too small. Length is " + \
+            str(len(rou))
 
         result = bit_reverse_vec(coeffs)
 
@@ -296,7 +308,8 @@ class FFTContext:
             values (list): Input vector of complex numbers.
         """
         assert len(values) <= self.fft_length / 4, "Input vector must have length at most " \
-            + str(self.fft_length / 4) + " < " + str(len(values)) + " = len(values)"
+            + str(self.fft_length / 4) + " < " + \
+            str(len(values)) + " = len(values)"
 
     def embedding(self, coeffs):
         """Computes a variant of the canonical embedding on the given coefficients.
@@ -325,7 +338,8 @@ class FFTContext:
                     index_odd = j + i + (1 << (logm - 1))
 
                     rou_idx = (self.rot_group[i] % idx_mod) * gap
-                    omega_factor = self.roots_of_unity[rou_idx] * result[index_odd]
+                    omega_factor = self.roots_of_unity[rou_idx] * \
+                        result[index_odd]
 
                     butterfly_plus = result[index_even] + omega_factor
                     butterfly_minus = result[index_even] - omega_factor

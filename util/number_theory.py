@@ -4,6 +4,7 @@
 import random
 import sympy
 
+
 def mod_exp(val, exp, modulus):
     """Computes an exponent in a modulus.
 
@@ -18,6 +19,7 @@ def mod_exp(val, exp, modulus):
         A value raised to a power in a modulus.
     """
     return pow(int(val), int(exp), int(modulus))
+
 
 def mod_inv(val, modulus):
     """Finds an inverse in a given prime modulus.
@@ -34,6 +36,7 @@ def mod_inv(val, modulus):
     """
     return mod_exp(val, modulus - 2, modulus)
 
+
 def find_generator(modulus):
     """Finds a generator in the given modulus.
 
@@ -42,11 +45,14 @@ def find_generator(modulus):
     Args:
         modulus (int): Modulus to find the generator in. Note: MUST
             BE PRIME.
+            Provide modulus from CRT, 3okal begeb root of unit, 3okal needs prime root of unity tho 
+            This prime root of unity is called a generator 
 
     Returns:
         A generator, or primitive root in the given modulus.
     """
     return sympy.ntheory.primitive_root(modulus)
+
 
 def root_of_unity(order, modulus):
     """Finds a root of unity in the given modulus.
@@ -69,12 +75,15 @@ def root_of_unity(order, modulus):
     if generator is None:
         raise ValueError('No primitive root of unity mod m = ' + str(modulus))
 
+    # print(f'Generator: {generator}')
+
     result = mod_exp(generator, (modulus - 1)//order, modulus)
 
     if result == 1:
         return root_of_unity(order, modulus)
 
-    return result
+    return result, generator
+
 
 def is_prime(number, num_trials=200):
     """Determines whether a number is prime.

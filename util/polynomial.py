@@ -3,6 +3,70 @@ Z_a[x]/f(x).
 """
 from util.ntt import NTTContext, FFTContext
 
+import os
+import ctypes
+import numpy as np
+
+here = os.getcwd()
+# Directory where the DLL is located, should move one up then into ntt_cuda
+dll_dir = os.path.join(here, "../ntt_cuda")
+os.add_dll_directory(dll_dir)
+
+cuda_bin = r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\bin"
+os.add_dll_directory(cuda_bin)
+
+lib = ctypes.CDLL("multi_ntt.dll")
+
+poly_mul = lib.poly_mul_multi_c
+poly_mul.restype = ctypes.c_int
+poly_mul.argtypes = [
+    ctypes.POINTER(ctypes.c_uint32),  # A_host
+    ctypes.POINTER(ctypes.c_uint32),  # B_host
+    ctypes.POINTER(ctypes.c_uint32),  # C_host
+    ctypes.c_uint,                    # N
+    ctypes.POINTER(ctypes.c_uint32),  # primitive_roots
+    ctypes.POINTER(ctypes.c_uint32),  # primitive_roots_inv
+    ctypes.POINTER(ctypes.c_uint32),  # primes
+    ctypes.c_uint                     # num_polys
+]
+
+
+def fast_multi_polynomial_multiplication(A, B, N, num_polys, primes, primitive_roots, primitive_roots_inv):
+    """
+    A: coefficients of the first polynomials, represented as a list of lists
+       where each inner list contains the coefficients of a polynomial of degree N-1 as a 2D array
+
+    B: coefficients of the second polynomials, represented as a list of lists
+        where each inner list contains the coefficients of a polynomial of degree N-1 as a 2D array
+
+    N: degree of the polynomials
+
+    num_polys: number of polynomials to be multiplied
+    """
+    # Allocate space for the result
+    A_host = np.array(sum(A, []), dtype=np.uint32)
+    B_host = np.array(sum(B, []), dtype=np.uint32)
+    C_host = np.zeros(num_polys * N, dtype=np.uint32)
+    primitive_roots_numpy = np.array(primitive_roots, dtype=np.uint32)
+    primitive_roots_inv_numpy = np.array(primitive_roots_inv, dtype=np.uint32)
+    primes_numpy = np.array(primes, dtype=np.uint32)
+
+    # Call the C function
+    poly_mul(
+        A_host.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
+        B_host.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
+        C_host.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
+        N,
+        primitive_roots_numpy.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
+        primitive_roots_inv_numpy.ctypes.data_as(
+            ctypes.POINTER(ctypes.c_uint32)),
+        primes_numpy.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
+        num_polys
+    )
+
+    return C_host.reshape((num_polys, N))
+
+
 class Polynomial:
     """A polynomial in the ring R_a.
 
@@ -27,7 +91,7 @@ class Polynomial:
         """
         self.ring_degree = degree
         assert len(coeffs) == degree, 'Size of polynomial array %d is not \
-            equal to degree %d of ring' %(len(coeffs), degree)
+            equal to degree %d of ring' % (len(coeffs), degree)
 
         self.coeffs = coeffs
 
@@ -49,7 +113,8 @@ class Polynomial:
 
         poly_sum = Polynomial(self.ring_degree, [0] * self.ring_degree)
 
-        poly_sum.coeffs = [self.coeffs[i] + poly.coeffs[i] for i in range(self.ring_degree)]
+        poly_sum.coeffs = [self.coeffs[i] + poly.coeffs[i]
+                           for i in range(self.ring_degree)]
         if coeff_modulus:
             poly_sum = poly_sum.mod(coeff_modulus)
         return poly_sum
@@ -72,12 +137,13 @@ class Polynomial:
 
         poly_diff = Polynomial(self.ring_degree, [0] * self.ring_degree)
 
-        poly_diff.coeffs = [self.coeffs[i] - poly.coeffs[i] for i in range(self.ring_degree)]
+        poly_diff.coeffs = [self.coeffs[i] - poly.coeffs[i]
+                            for i in range(self.ring_degree)]
         if coeff_modulus:
             poly_diff = poly_diff.mod(coeff_modulus)
         return poly_diff
 
-    def multiply(self, poly, coeff_modulus, ntt=None, crt=None):
+    def multiply(self, poly, coeff_modulus, ntt=None, crt=None, is_parallel=True):
         """Multiplies two polynomials in the ring using NTT.
 
         Multiplies the current polynomial to poly inside the ring R_a
@@ -99,7 +165,7 @@ class Polynomial:
             A Polynomial which is the product of the two polynomials.
         """
         if crt:
-            return self.multiply_crt(poly, crt)
+            return self.multiply_crt(poly, crt, is_parallel)
 
         if ntt:
             a = ntt.ftt_fwd(self.coeffs)
@@ -107,10 +173,10 @@ class Polynomial:
             ab = [a[i] * b[i] for i in range(self.ring_degree)]
             prod = ntt.ftt_inv(ab)
             return Polynomial(self.ring_degree, prod)
-        
+
         return self.multiply_naive(poly, coeff_modulus)
 
-    def multiply_crt(self, poly, crt):
+    def multiply_crt(self, poly, crt, is_parallel=True):
         """Multiplies two polynomials in the ring in CRT representation.
 
         Multiplies the current polynomial to poly inside the ring by
@@ -131,19 +197,57 @@ class Polynomial:
 
         poly_prods = []
 
-        # Perform NTT for each prime factor.
+        A_blocks = []  # A_blocks
+        B_blocks = []  # B_blocks
+        N = len(poly.coeffs)  # N is no of coefficients in each polynomial
+        num_polys = len(crt.primes)  # Number of primes
+        primes = crt.primes
+        primitive_roots = crt.generators
+        primitive_roots_inv = crt.inv_generators
+        polys_out_mod = []
         for i in range(len(crt.primes)):
-            prod = self.multiply(poly, crt.primes[i], ntt=crt.ntts[i])
-            poly_prods.append(prod)
-
+            if is_parallel:
+                poly_in1_mod = self.mod(crt.primes[i])
+                poly_in2_mod = poly.mod(crt.primes[i])
+                A_blocks.append(poly_in1_mod)
+                B_blocks.append(poly_in2_mod)
+            else:
+                prod = self.multiply(poly, crt.primes[i], ntt=crt.ntts[i])
+                poly_prods.append(prod)
+            if i < 5:
+                # poly_out_mod = prod.mod(crt.primes[i])
+                # poly_prods.append(poly_out_mod)
+                print("Polynomial input 1 mod " +
+                      str(crt.primes[i]) + ": ", str(poly_in1_mod))
+                print("Polynomial input 2 mod " +
+                      str(crt.primes[i]) + ": ", str(poly_in2_mod))
+                # print("Polynomial output mod " +
+                #   str(crt.primes[i]) + ": ", str(poly_out_mod))
+        print("Generators: ", primitive_roots)
+        print("Inverse Generators: ", primitive_roots_inv)
+        print("Primes: ", primes)
+        print("N", N)
+        print("Num polys", num_polys)
+        print("A blocks: ", A_blocks)
+        print("B blocks: ", B_blocks)
+        if is_parallel:
+            print("Parallel multiplication")
+            results = fast_multi_polynomial_multiplication(
+                A_blocks, B_blocks, N, num_polys, primes, primitive_roots, primitive_roots_inv)
+        else:
+            print("Sequential multiplication")
+        # Results is a lists of lists where each list is the coefficients of a polynomial in the CRT representation
         # Combine the products with CRT.
         final_coeffs = [0] * self.ring_degree
         for i in range(self.ring_degree):
-            values = [p.coeffs[i] for p in poly_prods]
+            if is_parallel:
+                values = [p[i] for p in results]
+                print("Values for index " + str(i) + " : ", values)
+            else:
+                values = [p.coeffs[i] for p in poly_prods]
             final_coeffs[i] = crt.reconstruct(values)
 
         return Polynomial(self.ring_degree, final_coeffs).mod_small(crt.modulus)
-
 
     def multiply_fft(self, poly, round=True):
         """Multiplies two polynomials in the ring using FFT.
@@ -211,7 +315,7 @@ class Polynomial:
                 if 0 <= d - i < self.ring_degree:
                     coeff += self.coeffs[i] * poly.coeffs[d - i]
             poly_prod.coeffs[index] += sign * coeff
-            
+
             if coeff_modulus:
                 poly_prod.coeffs[index] %= coeff_modulus
 
@@ -295,7 +399,6 @@ class Polynomial:
             new_coeffs[i] = -self.coeffs[self.ring_degree - i]
         return Polynomial(self.ring_degree, new_coeffs)
 
-
     def round(self):
         """Rounds all coefficients to nearest integer.
 
@@ -358,12 +461,14 @@ class Polynomial:
         """
         try:
             new_coeffs = [c % coeff_modulus for c in self.coeffs]
-            new_coeffs = [c - coeff_modulus if c > coeff_modulus // 2 else c for c in new_coeffs]
+            new_coeffs = [c - coeff_modulus if c >
+                          coeff_modulus // 2 else c for c in new_coeffs]
         except:
             print(self.coeffs)
             print(coeff_modulus)
             new_coeffs = [c % coeff_modulus for c in self.coeffs]
-            new_coeffs = [c - coeff_modulus if c > coeff_modulus // 2 else c for c in new_coeffs]
+            new_coeffs = [c - coeff_modulus if c >
+                          coeff_modulus // 2 else c for c in new_coeffs]
         return Polynomial(self.ring_degree, new_coeffs)
 
     def base_decompose(self, base, num_levels):
@@ -378,7 +483,8 @@ class Polynomial:
             An array of Polynomials, where the ith element is the coefficient of
             the base T^i.
         """
-        decomposed = [Polynomial(self.ring_degree, [0] * self.ring_degree) for _ in range(num_levels)]
+        decomposed = [Polynomial(self.ring_degree, [0] * self.ring_degree)
+                      for _ in range(num_levels)]
         poly = self
 
         for i in range(num_levels):
@@ -403,7 +509,6 @@ class Polynomial:
             result = result * inp + self.coeffs[i]
 
         return result
-
 
     def __str__(self):
         """Represents polynomial as a readable string.

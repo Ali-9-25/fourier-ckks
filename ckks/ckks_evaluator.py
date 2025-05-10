@@ -10,6 +10,7 @@ import util.matrix_operations
 from util.plaintext import Plaintext
 from util.polynomial import Polynomial
 
+
 class CKKSEvaluator:
 
     """An instance of an evaluator for ciphertexts.
@@ -119,7 +120,7 @@ class CKKSEvaluator:
         c1 = c1.mod_small(modulus)
         return Ciphertext(c0, c1, ciph1.scaling_factor, modulus)
 
-    def multiply(self, ciph1, ciph2, relin_key):
+    def multiply(self, ciph1, ciph2, relin_key, is_parallel=True):
         """Multiplies two ciphertexts.
 
         Multiplies two ciphertexts within the context, and relinearizes.
@@ -140,15 +141,20 @@ class CKKSEvaluator:
 
         modulus = ciph1.modulus
 
-        c0 = ciph1.c0.multiply(ciph2.c0, modulus, crt=self.crt_context)
+        c0 = ciph1.c0.multiply(
+            ciph2.c0, modulus, crt=self.crt_context, is_parallel=is_parallel)
+        # NOTE: small modulus uses mod that returns from -q/2 to q/2 instead of normal modulus which uses mod that returns from 0 to q
         c0 = c0.mod_small(modulus)
 
-        c1 = ciph1.c0.multiply(ciph2.c1, modulus, crt=self.crt_context)
-        temp = ciph1.c1.multiply(ciph2.c0, modulus, crt=self.crt_context)
+        c1 = ciph1.c0.multiply(
+            ciph2.c1, modulus, crt=self.crt_context, is_parallel=is_parallel)
+        temp = ciph1.c1.multiply(
+            ciph2.c0, modulus, crt=self.crt_context, is_parallel=is_parallel)
         c1 = c1.add(temp, modulus)
         c1 = c1.mod_small(modulus)
 
-        c2 = ciph1.c1.multiply(ciph2.c1, modulus, crt=self.crt_context)
+        c2 = ciph1.c1.multiply(
+            ciph2.c1, modulus, crt=self.crt_context, is_parallel=is_parallel)
         c2 = c2.mod_small(modulus)
 
         return self.relinearize(relin_key, c0, c1, c2, ciph1.scaling_factor * ciph2.scaling_factor,
@@ -193,13 +199,15 @@ class CKKSEvaluator:
         Returns:
             A Ciphertext which has only two components.
         """
-        new_c0 = relin_key.p0.multiply(c2, modulus * self.big_modulus, crt=self.crt_context)
+        new_c0 = relin_key.p0.multiply(
+            c2, modulus * self.big_modulus, crt=self.crt_context)
         new_c0 = new_c0.mod_small(modulus * self.big_modulus)
         new_c0 = new_c0.scalar_integer_divide(self.big_modulus)
         new_c0 = new_c0.add(c0, modulus)
         new_c0 = new_c0.mod_small(modulus)
 
-        new_c1 = relin_key.p1.multiply(c2, modulus * self.big_modulus, crt=self.crt_context)
+        new_c1 = relin_key.p1.multiply(
+            c2, modulus * self.big_modulus, crt=self.crt_context)
         new_c1 = new_c1.mod_small(modulus * self.big_modulus)
         new_c1 = new_c1.scalar_integer_divide(self.big_modulus)
         new_c1 = new_c1.add(c1, modulus)
@@ -256,13 +264,15 @@ class CKKSEvaluator:
             A Ciphertext which encrypts the same message under a different key.
         """
 
-        c0 = key.p0.multiply(ciph.c1, ciph.modulus * self.big_modulus, crt=self.crt_context)
+        c0 = key.p0.multiply(ciph.c1, ciph.modulus *
+                             self.big_modulus, crt=self.crt_context)
         c0 = c0.mod_small(ciph.modulus * self.big_modulus)
         c0 = c0.scalar_integer_divide(self.big_modulus)
         c0 = c0.add(ciph.c0, ciph.modulus)
         c0 = c0.mod_small(ciph.modulus)
 
-        c1 = key.p1.multiply(ciph.c1, ciph.modulus * self.big_modulus, crt=self.crt_context)
+        c1 = key.p1.multiply(ciph.c1, ciph.modulus *
+                             self.big_modulus, crt=self.crt_context)
         c1 = c1.mod_small(ciph.modulus * self.big_modulus)
         c1 = c1.scalar_integer_divide(self.big_modulus)
         c1 = c1.mod_small(ciph.modulus)
@@ -286,7 +296,8 @@ class CKKSEvaluator:
         """
         rot_ciph0 = ciph.c0.rotate(rotation)
         rot_ciph1 = ciph.c1.rotate(rotation)
-        rot_ciph = Ciphertext(rot_ciph0, rot_ciph1, ciph.scaling_factor, ciph.modulus)
+        rot_ciph = Ciphertext(rot_ciph0, rot_ciph1,
+                              ciph.scaling_factor, ciph.modulus)
         return self.switch_key(rot_ciph, rot_key.key)
 
     def conjugate(self, ciph, conj_key):
@@ -305,7 +316,8 @@ class CKKSEvaluator:
 
         conj_ciph0 = ciph.c0.conjugate().mod_small(ciph.modulus)
         conj_ciph1 = ciph.c1.conjugate().mod_small(ciph.modulus)
-        conj_ciph = Ciphertext(conj_ciph0, conj_ciph1, ciph.scaling_factor, ciph.modulus)
+        conj_ciph = Ciphertext(conj_ciph0, conj_ciph1,
+                               ciph.scaling_factor, ciph.modulus)
         return self.switch_key(conj_ciph, conj_key)
 
     def multiply_matrix_naive(self, ciph, matrix, rot_keys, encoder):
@@ -581,7 +593,8 @@ class CKKSEvaluator:
             Ciphertext for exponential.
         """
         num_iterations = self.boot_context.num_taylor_iterations
-        const_plain = self.create_complex_constant_plain(const / 2**num_iterations, encoder)
+        const_plain = self.create_complex_constant_plain(
+            const / 2**num_iterations, encoder)
         ciph = self.multiply_plain(ciph, const_plain)
         ciph = self.rescale(ciph, self.scaling_factor)
         ciph = self.exp_taylor(ciph, relin_key, encoder)
@@ -645,7 +658,8 @@ class CKKSEvaluator:
 
         print("------------ BOOTSTRAPPING MODULUS CHANGES -------------")
         print("Old modulus q: %d bits" % (int(math.log(old_modulus, 2))))
-        print("Raised modulus Q_0: %d bits" % (int(math.log(self.big_modulus, 2))))
+        print("Raised modulus Q_0: %d bits" %
+              (int(math.log(self.big_modulus, 2))))
         print("Final modulus Q_1: %d bits" % (int(math.log(ciph.modulus, 2))))
 
         return old_ciph, ciph
