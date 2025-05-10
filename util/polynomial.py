@@ -9,7 +9,7 @@ import numpy as np
 
 here = os.getcwd()
 # Directory where the DLL is located, should move one up then into ntt_cuda
-dll_dir = os.path.join(here, "../ntt_cuda")
+dll_dir = os.path.join(here, "./ntt_cuda")
 os.add_dll_directory(dll_dir)
 
 cuda_bin = r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\bin"
