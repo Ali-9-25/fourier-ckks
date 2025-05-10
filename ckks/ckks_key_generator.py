@@ -61,7 +61,8 @@ class CKKSKeyGenerator:
             0, mod, params.poly_degree))  # a
         pk_error = Polynomial(params.poly_degree,
                               sample_triangle(params.poly_degree))  # e
-        p0 = pk_coeff.multiply(self.secret_key.s, mod)  # as
+        p0 = pk_coeff.multiply(self.secret_key.s, mod,
+                               self.params.crt_context)  # as
         p0 = p0.scalar_multiply(-1, mod)  # -as
         p0 = p0.add(pk_error, mod)  # -as + e
         p1 = pk_coeff
@@ -86,7 +87,8 @@ class CKKSKeyGenerator:
         swk_error = Polynomial(self.params.poly_degree,
                                sample_triangle(self.params.poly_degree))
 
-        sw0 = swk_coeff.multiply(self.secret_key.s, mod_squared)
+        sw0 = swk_coeff.multiply(
+            self.secret_key.s, mod_squared, self.params.crt_context)
         sw0 = sw0.scalar_multiply(-1, mod_squared)
         sw0 = sw0.add(swk_error, mod_squared)
         temp = new_key.scalar_multiply(mod, mod_squared)
@@ -102,7 +104,7 @@ class CKKSKeyGenerator:
                 plaintext, and ciphertext modulus.
         """
         sk_squared = self.secret_key.s.multiply(
-            self.secret_key.s, self.params.big_modulus)  # s^2
+            self.secret_key.s, self.params.big_modulus, self.params.crt_context)  # s^2
         # TODO: Understand later what switching key is
         self.relin_key = self.generate_switching_key(sk_squared)
 
