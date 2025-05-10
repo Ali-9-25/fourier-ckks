@@ -209,8 +209,8 @@ class Polynomial:
             if is_parallel:
                 poly_in1_mod = self.mod(crt.primes[i])
                 poly_in2_mod = poly.mod(crt.primes[i])
-                A_blocks.append(poly_in1_mod)
-                B_blocks.append(poly_in2_mod)
+                A_blocks.append(poly_in1_mod.coeffs)
+                B_blocks.append(poly_in2_mod.coeffs)
             else:
                 prod = self.multiply(poly, crt.primes[i], ntt=crt.ntts[i])
                 poly_prods.append(prod)
@@ -223,6 +223,7 @@ class Polynomial:
                       str(crt.primes[i]) + ": ", str(poly_in2_mod))
                 # print("Polynomial output mod " +
                 #   str(crt.primes[i]) + ": ", str(poly_out_mod))
+
         print("Generators: ", primitive_roots)
         print("Inverse Generators: ", primitive_roots_inv)
         print("Primes: ", primes)
