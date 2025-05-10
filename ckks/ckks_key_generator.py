@@ -48,7 +48,7 @@ class CKKSKeyGenerator:
             params.poly_degree, params.hamming_weight)
         self.secret_key = SecretKey(Polynomial(params.poly_degree, key))
 
-    def generate_public_key(self, params):
+    def generate_public_key(self, params, is_parallel=True):
         """Generates a public key for CKKS scheme.
 
         Args:
@@ -62,13 +62,13 @@ class CKKSKeyGenerator:
         pk_error = Polynomial(params.poly_degree,
                               sample_triangle(params.poly_degree))  # e
         p0 = pk_coeff.multiply(self.secret_key.s, mod,
-                               crt=self.params.crt_context)  # as
+                               crt=self.params.crt_context, is_parallel=is_parallel)  # as
         p0 = p0.scalar_multiply(-1, mod)  # -as
         p0 = p0.add(pk_error, mod)  # -as + e
         p1 = pk_coeff
         self.public_key = PublicKey(p0, p1)
 
-    def generate_switching_key(self, new_key):
+    def generate_switching_key(self, new_key, is_parallel=True):
         """Generates a switching key for CKKS scheme.
 
         Generates a switching key as described in KSGen in the CKKS paper.
@@ -88,7 +88,7 @@ class CKKSKeyGenerator:
                                sample_triangle(self.params.poly_degree))
 
         sw0 = swk_coeff.multiply(
-            self.secret_key.s, mod_squared, crt=self.params.crt_context)
+            self.secret_key.s, mod_squared, crt=self.params.crt_context, is_parallel=is_parallel)
         sw0 = sw0.scalar_multiply(-1, mod_squared)
         sw0 = sw0.add(swk_error, mod_squared)
         temp = new_key.scalar_multiply(mod, mod_squared)
@@ -96,7 +96,7 @@ class CKKSKeyGenerator:
         sw1 = swk_coeff
         return PublicKey(sw0, sw1)
 
-    def generate_relin_key(self, params):
+    def generate_relin_key(self, params, is_parallel=True):
         """Generates a relinearization key for CKKS scheme.
 
         Args:
@@ -104,7 +104,7 @@ class CKKSKeyGenerator:
                 plaintext, and ciphertext modulus.
         """
         sk_squared = self.secret_key.s.multiply(
-            self.secret_key.s, self.params.big_modulus, crt=self.params.crt_context)  # s^2
+            self.secret_key.s, self.params.big_modulus, crt=self.params.crt_context, is_parallel=is_parallel)  # s^2
         # TODO: Understand later what switching key is
         self.relin_key = self.generate_switching_key(sk_squared)
 

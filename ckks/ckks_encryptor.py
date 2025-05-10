@@ -34,7 +34,7 @@ class CKKSEncryptor:
         self.public_key = public_key
         self.secret_key = secret_key
 
-    def encrypt_with_secret_key(self, plain):
+    def encrypt_with_secret_key(self, plain, is_parallel=True):
         """Encrypts a message with secret key encryption.
 
         Encrypts the message for secret key encryption and returns the corresponding ciphertext.
@@ -63,7 +63,7 @@ class CKKSEncryptor:
 
         return Ciphertext(c0, c1, plain.scaling_factor, self.coeff_modulus)
 
-    def encrypt(self, plain):
+    def encrypt(self, plain, is_parallel=True):
         """Encrypts a message.
 
         Encrypts the message and returns the corresponding ciphertext.
@@ -85,13 +85,15 @@ class CKKSEncryptor:
         error2 = Polynomial(
             self.poly_degree, sample_triangle(self.poly_degree))
 
-        c0 = p0.multiply(random_vec, self.coeff_modulus, crt=self.crt_context)
+        c0 = p0.multiply(random_vec, self.coeff_modulus,
+                         crt=self.crt_context, is_parallel=is_parallel)
         # TODO: Check if we should replace this multiply with the kernel
         c0 = error1.add(c0, self.coeff_modulus)
         c0 = c0.add(plain.poly, self.coeff_modulus)
         c0 = c0.mod_small(self.coeff_modulus)
 
-        c1 = p1.multiply(random_vec, self.coeff_modulus, crt=self.crt_context)
+        c1 = p1.multiply(random_vec, self.coeff_modulus,
+                         crt=self.crt_context, is_parallel=is_parallel)
         c1 = error2.add(c1, self.coeff_modulus)
         c1 = c1.mod_small(self.coeff_modulus)
 
