@@ -4,6 +4,7 @@ from util.ciphertext import Ciphertext
 from util.polynomial import Polynomial
 from util.random_sample import sample_triangle
 
+
 class CKKSEncryptor:
 
     """An object that can encrypt data using CKKS given a public key.
@@ -48,7 +49,8 @@ class CKKSEncryptor:
         assert self.secret_key != None, 'Secret key does not exist'
 
         sk = self.secret_key.s
-        random_vec = Polynomial(self.poly_degree, sample_triangle(self.poly_degree))
+        random_vec = Polynomial(
+            self.poly_degree, sample_triangle(self.poly_degree))
         error = Polynomial(self.poly_degree, sample_triangle(self.poly_degree))
 
         c0 = sk.multiply(random_vec, self.coeff_modulus, crt=self.crt_context)
@@ -75,12 +77,16 @@ class CKKSEncryptor:
         """
         p0 = self.public_key.p0
         p1 = self.public_key.p1
-        
-        random_vec = Polynomial(self.poly_degree, sample_triangle(self.poly_degree))
-        error1 = Polynomial(self.poly_degree, sample_triangle(self.poly_degree))
-        error2 = Polynomial(self.poly_degree, sample_triangle(self.poly_degree))
+
+        random_vec = Polynomial(
+            self.poly_degree, sample_triangle(self.poly_degree))
+        error1 = Polynomial(
+            self.poly_degree, sample_triangle(self.poly_degree))
+        error2 = Polynomial(
+            self.poly_degree, sample_triangle(self.poly_degree))
 
         c0 = p0.multiply(random_vec, self.coeff_modulus, crt=self.crt_context)
+        # TODO: Check if we should replace this multiply with the kernel
         c0 = error1.add(c0, self.coeff_modulus)
         c0 = c0.add(plain.poly, self.coeff_modulus)
         c0 = c0.mod_small(self.coeff_modulus)
@@ -100,4 +106,3 @@ class CKKSEncryptor:
             new_modulus (int): New modulus.
         """
         self.coeff_modulus = new_modulus
-        
