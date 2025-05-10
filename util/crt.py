@@ -113,7 +113,7 @@ class CRTContext:
         regular_rep_val = 0
 
         for i in range(len(values)):
-            intermed_val = (values[i] * self.crt_inv_vals[i]) % self.primes[i]
+            intermed_val = (int(values[i]) * self.crt_inv_vals[i]) % self.primes[i]
             intermed_val = (intermed_val * self.crt_vals[i]) % self.modulus
             regular_rep_val += intermed_val
             regular_rep_val %= self.modulus

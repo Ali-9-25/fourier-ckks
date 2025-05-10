@@ -214,36 +214,17 @@ class Polynomial:
             else:
                 prod = self.multiply(poly, crt.primes[i], ntt=crt.ntts[i])
                 poly_prods.append(prod)
-            if i < 5:
-                # poly_out_mod = prod.mod(crt.primes[i])
-                # poly_prods.append(poly_out_mod)
-                print("Polynomial input 1 mod " +
-                      str(crt.primes[i]) + ": ", str(poly_in1_mod))
-                print("Polynomial input 2 mod " +
-                      str(crt.primes[i]) + ": ", str(poly_in2_mod))
-                # print("Polynomial output mod " +
-                #   str(crt.primes[i]) + ": ", str(poly_out_mod))
 
-        print("Generators: ", primitive_roots)
-        print("Inverse Generators: ", primitive_roots_inv)
-        print("Primes: ", primes)
-        print("N", N)
-        print("Num polys", num_polys)
-        print("A blocks: ", A_blocks)
-        print("B blocks: ", B_blocks)
         if is_parallel:
-            print("Parallel multiplication")
             results = fast_multi_polynomial_multiplication(
                 A_blocks, B_blocks, N, num_polys, primes, primitive_roots, primitive_roots_inv)
-        else:
-            print("Sequential multiplication")
+            print("PARALLEL!!!!!!")
         # Results is a lists of lists where each list is the coefficients of a polynomial in the CRT representation
         # Combine the products with CRT.
         final_coeffs = [0] * self.ring_degree
         for i in range(self.ring_degree):
             if is_parallel:
                 values = [p[i] for p in results]
-                print("Values for index " + str(i) + " : ", values)
             else:
                 values = [p.coeffs[i] for p in poly_prods]
             final_coeffs[i] = crt.reconstruct(values)

@@ -183,7 +183,7 @@ class CKKSEvaluator:
 
         return Ciphertext(c0, c1, ciph.scaling_factor * plain.scaling_factor, ciph.modulus)
 
-    def relinearize(self, relin_key, c0, c1, c2, new_scaling_factor, modulus):
+    def relinearize(self, relin_key, c0, c1, c2, new_scaling_factor, modulus, is_parallel=True):
         """Relinearizes a 3-dimensional ciphertext.
 
         Reduces 3-dimensional ciphertext back down to 2 dimensions.
@@ -200,14 +200,14 @@ class CKKSEvaluator:
             A Ciphertext which has only two components.
         """
         new_c0 = relin_key.p0.multiply(
-            c2, modulus * self.big_modulus, crt=self.crt_context)
+            c2, modulus * self.big_modulus, crt=self.crt_context, is_parallel=is_parallel)
         new_c0 = new_c0.mod_small(modulus * self.big_modulus)
         new_c0 = new_c0.scalar_integer_divide(self.big_modulus)
         new_c0 = new_c0.add(c0, modulus)
         new_c0 = new_c0.mod_small(modulus)
 
         new_c1 = relin_key.p1.multiply(
-            c2, modulus * self.big_modulus, crt=self.crt_context)
+            c2, modulus * self.big_modulus, crt=self.crt_context, is_parallel=is_parallel)
         new_c1 = new_c1.mod_small(modulus * self.big_modulus)
         new_c1 = new_c1.scalar_integer_divide(self.big_modulus)
         new_c1 = new_c1.add(c1, modulus)
