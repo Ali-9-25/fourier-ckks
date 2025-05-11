@@ -19,7 +19,9 @@ class FourierCKKS:
                  ciph_modulus=(1 << 200),
                  big_modulus=(1 << 300),
                  scaling_factor=(1 << 30),
-                 prime_size=30):
+                 prime_size=30,
+                 is_parallel=True):
+        self.is_parallel = is_parallel
         # We begin by initializing the CKKS parameters and keys
         self.params = CKKSParameters(
             poly_degree=poly_degree,
@@ -28,7 +30,7 @@ class FourierCKKS:
             scaling_factor=scaling_factor,
             prime_size=prime_size
         )
-        keygen = CKKSKeyGenerator(self.params)
+        keygen = CKKSKeyGenerator(self.params, is_parallel=is_parallel)
         self.public_key = keygen.public_key
         self.secret_key = keygen.secret_key
         self.relin_key = keygen.relin_key
@@ -81,7 +83,7 @@ class FourierCKKS:
         for i in range(nv * nh):
             chunk = freq[i*self.data_len:(i+1)*self.data_len]
             pt = self.encoder.encode(chunk, self.params.scaling_factor)
-            ct_list.append(self.encryptor.encrypt(pt))
+            ct_list.append(self.encryptor.encrypt(pt, is_parallel=self.is_parallel))
         return ct_list
         
 
@@ -98,7 +100,7 @@ class FourierCKKS:
 
         freq = np.zeros(padded_len, dtype=complex)
         for i, ct in enumerate(ct_list):
-            pt = self.decryptor.decrypt(ct)
+            pt = self.decryptor.decrypt(ct, is_parallel=self.is_parallel)
             freq[i*self.data_len:(i+1)*self.data_len] = self.encoder.decode(pt)
         if target_width == 1:
             time = IFFT1D(freq)
@@ -127,7 +129,7 @@ class FourierCKKS:
         """
         if len(ct_list1) != len(ct_list2):
             raise ValueError("Ciphertext lists must match segment count for convolution.")
-        return [self.evaluator.multiply(a, b, self.relin_key)
+        return [self.evaluator.multiply(a, b, self.relin_key, is_parallel=self.is_parallel)
                 for a, b in zip(ct_list1, ct_list2)]
 
 

@@ -25,7 +25,7 @@ class CKKSKeyGenerator:
             from secret key.
     """
 
-    def __init__(self, params):
+    def __init__(self, params, is_parallel=True):
         """Generates secret/public key pair for CKKS scheme.
 
         Args:
@@ -34,8 +34,8 @@ class CKKSKeyGenerator:
         """
         self.params = params
         self.generate_secret_key(params)
-        self.generate_public_key(params)
-        self.generate_relin_key(params)
+        self.generate_public_key(params, is_parallel=is_parallel)
+        self.generate_relin_key(params, is_parallel=is_parallel)
 
     def generate_secret_key(self, params):
         """Generates a secret key for CKKS scheme.
