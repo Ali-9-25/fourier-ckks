@@ -11,9 +11,9 @@ It combines CKKS approximate homomorphic encryption with the convolution theorem
 | Goal | How Fourier-CKKS meets it |
 |------|---------------------------|
 | **Privacy** | All audio/image samples are encrypted before leaving the client; the server only manipulates ciphertexts. |
-| **Quantum-safety** | Security relies on Ring-LWE (CKKS) — believed hard even for quantum computers. :contentReference[oaicite:2]{index=2}:contentReference[oaicite:3]{index=3} |
+| **Quantum-safety** | Security relies on Ring-LWE (CKKS) — believed hard even for quantum computers.
 | **Floating-point support** | CKKS natively packs complex/real values, perfect for DSP workloads. |
-| **Efficiency** | Heavy FFT/NTT and polynomial arithmetic are parallelised on CUDA GPUs, giving 10–100× speed-ups over CPU implementations. :contentReference[oaicite:4]{index=4}:contentReference[oaicite:5]{index=5} |
+| **Efficiency** | Heavy FFT/NTT and polynomial arithmetic are parallelised on CUDA GPUs, giving 10–100× speed-ups over CPU implementations. |
 
 ---
 
