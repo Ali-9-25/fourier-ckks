@@ -124,6 +124,3 @@ If you use this code in academic work, please cite the accompanying report and t
 ---
 
 *Happy privacy-preserving signal processing!* ✌️
-
-```
-```
