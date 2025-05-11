@@ -160,7 +160,7 @@ class CKKSEvaluator:
         return self.relinearize(relin_key, c0, c1, c2, ciph1.scaling_factor * ciph2.scaling_factor,
                                 modulus, is_parallel=is_parallel)
 
-    def multiply_plain(self, ciph, plain):
+    def multiply_plain(self, ciph, plain, is_parallel=True):
         """Multiplies a ciphertext with a plaintext.
 
         Multiplies a ciphertext with a plaintext polynomial within the context.
@@ -175,10 +175,12 @@ class CKKSEvaluator:
         assert isinstance(ciph, Ciphertext)
         assert isinstance(plain, Plaintext)
 
-        c0 = ciph.c0.multiply(plain.poly, ciph.modulus, crt=self.crt_context)
+        c0 = ciph.c0.multiply(plain.poly, ciph.modulus,
+                              crt=self.crt_context, is_parallel=is_parallel)
         c0 = c0.mod_small(ciph.modulus)
 
-        c1 = ciph.c1.multiply(plain.poly, ciph.modulus, crt=self.crt_context)
+        c1 = ciph.c1.multiply(plain.poly, ciph.modulus,
+                              crt=self.crt_context, is_parallel=is_parallel)
         c1 = c1.mod_small(ciph.modulus)
 
         return Ciphertext(c0, c1, ciph.scaling_factor * plain.scaling_factor, ciph.modulus)
@@ -251,7 +253,7 @@ class CKKSEvaluator:
         c1 = ciph.c1.mod_small(new_modulus)
         return Ciphertext(c0, c1, ciph.scaling_factor, new_modulus)
 
-    def switch_key(self, ciph, key):
+    def switch_key(self, ciph, key, is_parallel=True):
         """Outputs ciphertext with switching key.
 
         Performs KS procedure as described in CKKS paper.
@@ -265,14 +267,14 @@ class CKKSEvaluator:
         """
 
         c0 = key.p0.multiply(ciph.c1, ciph.modulus *
-                             self.big_modulus, crt=self.crt_context)
+                             self.big_modulus, crt=self.crt_context, is_parallel=is_parallel)
         c0 = c0.mod_small(ciph.modulus * self.big_modulus)
         c0 = c0.scalar_integer_divide(self.big_modulus)
         c0 = c0.add(ciph.c0, ciph.modulus)
         c0 = c0.mod_small(ciph.modulus)
 
         c1 = key.p1.multiply(ciph.c1, ciph.modulus *
-                             self.big_modulus, crt=self.crt_context)
+                             self.big_modulus, crt=self.crt_context, is_parallel=is_parallel)
         c1 = c1.mod_small(ciph.modulus * self.big_modulus)
         c1 = c1.scalar_integer_divide(self.big_modulus)
         c1 = c1.mod_small(ciph.modulus)
@@ -320,7 +322,7 @@ class CKKSEvaluator:
                                ciph.scaling_factor, ciph.modulus)
         return self.switch_key(conj_ciph, conj_key)
 
-    def multiply_matrix_naive(self, ciph, matrix, rot_keys, encoder):
+    def multiply_matrix_naive(self, ciph, matrix, rot_keys, encoder, is_parallel=True):
         """Multiplies the ciphertext by the given matrix.
 
         Returns a ciphertext for the matrix multiplication.
@@ -336,18 +338,18 @@ class CKKSEvaluator:
         """
         diag = util.matrix_operations.diagonal(matrix, 0)
         diag = encoder.encode(diag, self.scaling_factor)
-        ciph_prod = self.multiply_plain(ciph, diag)
+        ciph_prod = self.multiply_plain(ciph, diag, is_parallel=is_parallel)
 
         for j in range(1, len(matrix)):
             diag = util.matrix_operations.diagonal(matrix, j)
             diag = encoder.encode(diag, self.scaling_factor)
             rot = self.rotate(ciph, j, rot_keys[j])
-            ciph_temp = self.multiply_plain(rot, diag)
+            ciph_temp = self.multiply_plain(rot, diag, is_parallel=is_parallel)
             ciph_prod = self.add(ciph_prod, ciph_temp)
 
         return ciph_prod
 
-    def multiply_matrix(self, ciph, matrix, rot_keys, encoder):
+    def multiply_matrix(self, ciph, matrix, rot_keys, encoder, is_parallel=True):
         """Multiplies the ciphertext by the given matrix quickly.
 
         Returns a ciphertext for the matrix multiplication using the Baby-Step Giant-Step algorithm
@@ -385,7 +387,8 @@ class CKKSEvaluator:
                 diagonal = util.matrix_operations.diagonal(matrix, shift + i)
                 diagonal = util.matrix_operations.rotate(diagonal, -shift)
                 diagonal_plain = encoder.encode(diagonal, self.scaling_factor)
-                dot_prod = self.multiply_plain(ciph_rots[i], diagonal_plain)
+                dot_prod = self.multiply_plain(
+                    ciph_rots[i], diagonal_plain, is_parallel=is_parallel)
                 if inner_sum:
                     inner_sum = self.add(inner_sum, dot_prod)
                 else:
@@ -432,7 +435,7 @@ class CKKSEvaluator:
         plain_vec = [const] * (self.degree // 2)
         return encoder.encode(plain_vec, self.scaling_factor)
 
-    def coeff_to_slot(self, ciph, rot_keys, conj_key, encoder):
+    def coeff_to_slot(self, ciph, rot_keys, conj_key, encoder, is_parallel=True):
         """Takes a ciphertext coefficients and puts into plaintext slots.
 
         Takes an encryption of t(x) = t_0 + t_1x + ... and transforms to
@@ -450,27 +453,27 @@ class CKKSEvaluator:
         """
         # Compute new ciphertexts.
         s1 = self.multiply_matrix(ciph, self.boot_context.encoding_mat_conj_transpose0,
-                                  rot_keys, encoder)
+                                  rot_keys, encoder, is_parallel=is_parallel)
         s2 = self.conjugate(ciph, conj_key)
         s2 = self.multiply_matrix(s2, self.boot_context.encoding_mat_transpose0, rot_keys,
-                                  encoder)
+                                  encoder, is_parallel=is_parallel)
         ciph0 = self.add(s1, s2)
         constant = self.create_constant_plain(1 / self.degree)
-        ciph0 = self.multiply_plain(ciph0, constant)
+        ciph0 = self.multiply_plain(ciph0, constant, is_parallel=is_parallel)
         ciph0 = self.rescale(ciph0, self.scaling_factor)
 
         s1 = self.multiply_matrix(ciph, self.boot_context.encoding_mat_conj_transpose1,
-                                  rot_keys, encoder)
+                                  rot_keys, encoder, is_parallel=is_parallel)
         s2 = self.conjugate(ciph, conj_key)
         s2 = self.multiply_matrix(s2, self.boot_context.encoding_mat_transpose1, rot_keys,
-                                  encoder)
+                                  encoder, is_parallel=is_parallel)
         ciph1 = self.add(s1, s2)
-        ciph1 = self.multiply_plain(ciph1, constant)
+        ciph1 = self.multiply_plain(ciph1, constant, is_parallel=is_parallel)
         ciph1 = self.rescale(ciph1, self.scaling_factor)
 
         return ciph0, ciph1
 
-    def slot_to_coeff(self, ciph0, ciph1, rot_keys, encoder):
+    def slot_to_coeff(self, ciph0, ciph1, rot_keys, encoder, is_parallel=True):
         """Takes plaintext slots and puts into ciphertext coefficients.
 
         Takes encryptions of (t_0, t_1, ..., t_(n/2)) and (t_(n/2 + 1), ..., t_(n-1))
@@ -487,14 +490,14 @@ class CKKSEvaluator:
             Ciphertext which is transformed.
         """
         s1 = self.multiply_matrix(ciph0, self.boot_context.encoding_mat0, rot_keys,
-                                  encoder)
+                                  encoder, is_parallel=is_parallel)
         s2 = self.multiply_matrix(ciph1, self.boot_context.encoding_mat1, rot_keys,
-                                  encoder)
+                                  encoder, is_parallel=is_parallel)
         ciph = self.add(s1, s2)
 
         return ciph
 
-    def exp_taylor(self, ciph, relin_key, encoder):
+    def exp_taylor(self, ciph, relin_key, encoder, is_parallel=True):
         """Evaluates the exponential function on the ciphertext.
 
         Takes an encryption of m and returns an encryption of e^(2 * pi * m).
@@ -507,27 +510,28 @@ class CKKSEvaluator:
         Returns:
             Ciphertext for exponential.
         """
-        ciph2 = self.multiply(ciph, ciph, relin_key)
+        ciph2 = self.multiply(ciph, ciph, relin_key, is_parallel=is_parallel)
         ciph2 = self.rescale(ciph2, self.scaling_factor)
 
-        ciph4 = self.multiply(ciph2, ciph2, relin_key)
+        ciph4 = self.multiply(ciph2, ciph2, relin_key, is_parallel=is_parallel)
         ciph4 = self.rescale(ciph4, self.scaling_factor)
 
         const = self.create_constant_plain(1)
         ciph01 = self.add_plain(ciph, const)
 
         const = self.create_constant_plain(1)
-        ciph01 = self.multiply_plain(ciph01, const)
+        ciph01 = self.multiply_plain(ciph01, const, is_parallel=is_parallel)
         ciph01 = self.rescale(ciph01, self.scaling_factor)
 
         const = self.create_constant_plain(3)
         ciph23 = self.add_plain(ciph, const)
 
         const = self.create_constant_plain(1 / 6)
-        ciph23 = self.multiply_plain(ciph23, const)
+        ciph23 = self.multiply_plain(ciph23, const, is_parallel=is_parallel)
         ciph23 = self.rescale(ciph23, self.scaling_factor)
 
-        ciph23 = self.multiply(ciph23, ciph2, relin_key)
+        ciph23 = self.multiply(ciph23, ciph2, relin_key,
+                               is_parallel=is_parallel)
         ciph23 = self.rescale(ciph23, self.scaling_factor)
         ciph01 = self.lower_modulus(ciph01, self.scaling_factor)
         ciph23 = self.add(ciph23, ciph01)
@@ -536,23 +540,25 @@ class CKKSEvaluator:
         ciph45 = self.add_plain(ciph, const)
 
         const = self.create_constant_plain(1 / 120)
-        ciph45 = self.multiply_plain(ciph45, const)
+        ciph45 = self.multiply_plain(ciph45, const, is_parallel=is_parallel)
         ciph45 = self.rescale(ciph45, self.scaling_factor)
 
         const = self.create_constant_plain(7)
         ciph = self.add_plain(ciph, const)
 
         const = self.create_constant_plain(1 / 5040)
-        ciph = self.multiply_plain(ciph, const)
+        ciph = self.multiply_plain(ciph, const, is_parallel=is_parallel)
         ciph = self.rescale(ciph, self.scaling_factor)
 
-        ciph = self.multiply(ciph, ciph2, relin_key)
+        ciph = self.multiply(ciph, ciph2, relin_key,
+                             is_parallel=is_parallel)
         ciph = self.rescale(ciph, self.scaling_factor)
 
         ciph45 = self.lower_modulus(ciph45, self.scaling_factor)
         ciph = self.add(ciph, ciph45)
 
-        ciph = self.multiply(ciph, ciph4, relin_key)
+        ciph = self.multiply(ciph, ciph4, relin_key,
+                             is_parallel=is_parallel)
         ciph = self.rescale(ciph, self.scaling_factor)
 
         ciph23 = self.lower_modulus(ciph23, self.scaling_factor)
@@ -578,7 +584,7 @@ class CKKSEvaluator:
         # Raise ciphertext modulus.
         ciph.modulus = self.big_modulus
 
-    def exp(self, ciph, const, relin_key, encoder):
+    def exp(self, ciph, const, relin_key, encoder, is_parallel=True):
         """Evaluates the exponential function on the ciphertext.
 
         Takes an encryption of m and returns an encryption of e^(const * m).
@@ -595,17 +601,18 @@ class CKKSEvaluator:
         num_iterations = self.boot_context.num_taylor_iterations
         const_plain = self.create_complex_constant_plain(
             const / 2**num_iterations, encoder)
-        ciph = self.multiply_plain(ciph, const_plain)
+        ciph = self.multiply_plain(ciph, const_plain, is_parallel=is_parallel)
         ciph = self.rescale(ciph, self.scaling_factor)
         ciph = self.exp_taylor(ciph, relin_key, encoder)
 
         for _ in range(num_iterations):
-            ciph = self.multiply(ciph, ciph, relin_key)
+            ciph = self.multiply(ciph, ciph, relin_key,
+                                 is_parallel=is_parallel)
             ciph = self.rescale(ciph, self.scaling_factor)
 
         return ciph
 
-    def bootstrap(self, ciph, rot_keys, conj_key, relin_key, encoder):
+    def bootstrap(self, ciph, rot_keys, conj_key, relin_key, encoder, is_parallel=True):
         """Evaluates the bootstrapping circuit on ciph.
 
         Takes a ciphertext (mod q), that encrypts some value m, and outputs a new
@@ -643,8 +650,10 @@ class CKKSEvaluator:
         # Scale answer.
         plain_const = self.create_complex_constant_plain(
             old_modulus / self.scaling_factor * 0.25 / math.pi / 1j, encoder)
-        ciph0 = self.multiply_plain(ciph_sin0, plain_const)
-        ciph1 = self.multiply_plain(ciph_sin1, plain_const)
+        ciph0 = self.multiply_plain(
+            ciph_sin0, plain_const, is_parallel=is_parallel)
+        ciph1 = self.multiply_plain(
+            ciph_sin1, plain_const, is_parallel=is_parallel)
         ciph0 = self.rescale(ciph0, self.scaling_factor)
         ciph1 = self.rescale(ciph1, self.scaling_factor)
 
