@@ -158,7 +158,7 @@ class CKKSEvaluator:
         c2 = c2.mod_small(modulus)
 
         return self.relinearize(relin_key, c0, c1, c2, ciph1.scaling_factor * ciph2.scaling_factor,
-                                modulus)
+                                modulus, is_parallel=is_parallel)
 
     def multiply_plain(self, ciph, plain):
         """Multiplies a ciphertext with a plaintext.

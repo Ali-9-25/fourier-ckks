@@ -447,3 +447,148 @@ if (idx < total)
 C[idx] = cuCmulf(A[idx], B[idx]);
 }
 /*  (You may also just call pointwise_mul_kernel with total=Nrows*Ncols) */
+
+/* ==================================================================== *
+ *        2-D FFT (single-prec.) with simple stream tiling              *
+ * ==================================================================== */
+
+#ifndef NSTREAMS
+#define NSTREAMS 4            /* change at will */
+#endif
+
+static int fft2d_gpu_dir_streams(const std::complex<float>* host_in,
+                                 std::complex<float>*       host_out,
+                                 std::size_t                rows,
+                                 std::size_t                cols,
+                                 float                      dir)
+{
+    if (rows == 0 || cols == 0
+        || (rows & (rows - 1)) || (cols & (cols - 1)))
+        return -1;
+
+    int  lgRows = static_cast<int>(std::log2(rows));
+    int  lgCols = static_cast<int>(std::log2(cols));
+
+    std::size_t total  = rows * cols;
+    std::size_t bytes  = total * sizeof(cuFloatComplex);
+
+    /* -------- device buffers ---------------------------- */
+    cuFloatComplex *d_in{}, *d_data1{}, *d_data2{};
+    cudaMalloc(&d_in,    bytes);           // raw copy of host
+    cudaMalloc(&d_data1, bytes);           // after row phase
+    cudaMalloc(&d_data2, bytes);           // after column phase
+
+    /* -------- helper constants -------------------------- */
+    dim3 threads(256);
+    std::size_t chunkRows = (rows + NSTREAMS - 1) / NSTREAMS;
+    std::size_t chunkBytes = chunkRows * cols * sizeof(cuFloatComplex);
+    std::size_t halfPerRow = cols >> 1;
+
+    /* -------- streams & events -------------------------- */
+    cudaStream_t s[NSTREAMS];
+    cudaEvent_t  rowDone[NSTREAMS];
+
+    for (int i = 0; i < NSTREAMS; ++i) {
+        cudaStreamCreate(&s[i]);
+        cudaEventCreateWithFlags(&rowDone[i], cudaEventDisableTiming);
+    }
+
+    /* ====================================================
+       ROW  PHASE  (copy → bit-reverse → butterfly)
+       Each stream handles 'chunkRows' rows.
+       ==================================================== */
+    for (int t = 0; t < NSTREAMS; ++t) {
+        std::size_t r0   = static_cast<std::size_t>(t) * chunkRows;
+        if (r0 >= rows) break;                   // no more work
+        std::size_t rCnt = std::min(chunkRows, rows - r0);
+
+        std::size_t offEl = r0 * cols;
+        std::size_t offBy = offEl * sizeof(cuFloatComplex);
+
+        /* async copy host → device for this tile */
+        cudaMemcpyAsync(reinterpret_cast<char*>(d_in) + offBy,
+                        host_in + offEl, rCnt * cols * sizeof(cuFloatComplex),
+                        cudaMemcpyHostToDevice, s[t]);
+
+        /* row-wise bit-reverse (on the tile) */
+        std::size_t tileTot = rCnt * cols;
+        dim3 blocksTile((tileTot + 255) / 256);
+
+        row_bit_reverse_kernel<<<blocksTile, threads, 0, s[t]>>>(
+            d_in  + offEl,
+            d_data1 + offEl,
+            rCnt, cols, lgCols);
+
+        /* row butterfly stages */
+        std::size_t halfWork = rCnt * halfPerRow;
+        dim3 blocksRow((halfWork + 255) / 256);
+
+        for (int st = 1; st <= lgCols; ++st)
+            row_fft_stage_kernel<<<blocksRow, threads, 0, s[t]>>>(
+                d_data1 + offEl, rCnt, cols, st, dir);
+
+        cudaEventRecord(rowDone[t], s[t]);           // tile ready
+    }
+
+    /* wait for *all* row tiles to finish ------------------- */
+    for (int t = 0; t < NSTREAMS; ++t)
+        cudaEventSynchronize(rowDone[t]);
+
+    /* ====================================================
+       COLUMN  PHASE  (bit-reverse + butterfly) – default stream
+       ==================================================== */
+    dim3 blocksTot((total + 255) / 256);
+    col_bit_reverse_kernel<<<blocksTot, threads>>>(
+        d_data1, d_data2, rows, cols, lgRows);
+
+    std::size_t halfColWork = (rows >> 1) * cols;
+    dim3 blocksCol((halfColWork + 255) / 256);
+
+    for (int st = 1; st <= lgRows; ++st)
+        col_fft_stage_kernel<<<blocksCol, threads>>>(
+            d_data2, rows, cols, st, dir);
+
+    /* optional inverse scaling */
+    if (dir > 0.f)
+        scale_kernel<<<blocksTot, threads>>>(d_data2, total,
+                       1.f / static_cast<float>(total));
+
+    /* ====================================================
+       ASYNC  D → H copies, one tile per original stream
+       ==================================================== */
+    for (int t = 0; t < NSTREAMS; ++t) {
+        std::size_t r0   = static_cast<std::size_t>(t) * chunkRows;
+        if (r0 >= rows) break;
+        std::size_t rCnt = std::min(chunkRows, rows - r0);
+
+        std::size_t offEl = r0 * cols;
+        std::size_t offBy = offEl * sizeof(cuFloatComplex);
+
+        cudaMemcpyAsync(host_out + offEl,
+                        reinterpret_cast<const char*>(d_data2) + offBy,
+                        rCnt * cols * sizeof(cuFloatComplex),
+                        cudaMemcpyDeviceToHost, s[t]);
+    }
+
+    /* final sync & clean-up -------------------------------- */
+    for (int t = 0; t < NSTREAMS; ++t) {
+        cudaStreamSynchronize(s[t]);
+        cudaStreamDestroy(s[t]);
+        cudaEventDestroy(rowDone[t]);
+    }
+    cudaFree(d_in);  cudaFree(d_data1); cudaFree(d_data2);
+    return 0;
+}
+
+/* ---------- public wrappers --------------------------------------- */
+int  fft2d_gpu_streams (const std::complex<float>* in,
+                        std::complex<float>*       out,
+                        std::size_t                rows,
+                        std::size_t                cols)
+{   return fft2d_gpu_dir_streams(in, out, rows, cols, -1.f); }
+
+int  ifft2d_gpu_streams(const std::complex<float>* in,
+                        std::complex<float>*       out,
+                        std::size_t                rows,
+                        std::size_t                cols)
+{   return fft2d_gpu_dir_streams(in, out, rows, cols, +1.f); }

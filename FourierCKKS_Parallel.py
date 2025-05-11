@@ -15,18 +15,17 @@ class FourierCKKS:
     """
 
     def __init__(self,
-                 poly_degree=512,
+                 poly_degree=8192,
                  ciph_modulus=(1 << 200),
                  big_modulus=(1 << 300),
-                 scaling_factor=(1 << 30),
-                 prime_size=30):
+                 scaling_factor=(1 << 30)):
         # We begin by initializing the CKKS parameters and keys
         self.params = CKKSParameters(
             poly_degree=poly_degree,
             ciph_modulus=ciph_modulus,
             big_modulus=big_modulus,
             scaling_factor=scaling_factor,
-            prime_size=prime_size
+            prime_size=30
         )
         keygen = CKKSKeyGenerator(self.params)
         self.public_key = keygen.public_key
