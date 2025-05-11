@@ -218,7 +218,6 @@ class Polynomial:
         if is_parallel:
             results = fast_multi_polynomial_multiplication(
                 A_blocks, B_blocks, N, num_polys, primes, primitive_roots, primitive_roots_inv)
-            print("PARALLEL!!!!!!")
         # Results is a lists of lists where each list is the coefficients of a polynomial in the CRT representation
         # Combine the products with CRT.
         final_coeffs = [0] * self.ring_degree
