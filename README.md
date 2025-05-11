@@ -1,4 +1,3 @@
-```markdown
 # Fourier-CKKS &nbsp;🚀  
 **GPU-accelerated homomorphic convolution for audio & images**
 
