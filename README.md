@@ -78,7 +78,7 @@ Implementation details follow the design in §2 of the report .
 > * `pip install -r requirements.txt`   *(NumPy, Numba, PyCUDA, Cupy, Jupyter, …)*
 
 ```bash
-git clone https://github.com/yourname/FOURIER-CKKS.git
+git clone https://github.com/Ali-9-25/FOURIER-CKKS.git
 cd FOURIER-CKKS
 
 # launch the audio demo
